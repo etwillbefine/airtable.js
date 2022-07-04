@@ -20,6 +20,11 @@ type RecordCollectionCallback<TFields extends FieldSet> = (
     error: CallbackError,
     records?: Records<TFields>
 ) => void;
+type RecordListCallback<TFields extends FieldSet> = (
+    records?: Records<TFields>,
+    offset?: number
+) => void;
+
 type DoneCallback = (error: CallbackError) => void;
 
 interface RecordCollectionRequestMethod<TFields extends FieldSet> {
@@ -27,9 +32,14 @@ interface RecordCollectionRequestMethod<TFields extends FieldSet> {
     (done: RecordCollectionCallback<TFields>): void;
 }
 
+interface RecordPageRequestMethod<TFields extends FieldSet> {
+    (): Promise<Records<TFields>>;
+    (done: RecordListCallback<TFields>): void;
+}
+
 interface RecordPageIteratationMethod<TFields extends FieldSet> {
     (pageCallback: PageCallback<TFields>): Promise<void>;
-    (pageCallback: PageCallback<TFields>, done: DoneCallback): void;
+    (pageCallback: PageCallback<TFields>, done: DoneCallback, onlyRecords?: boolean): void;
 }
 
 /**
@@ -46,6 +56,7 @@ class Query<TFields extends FieldSet> {
     readonly firstPage: RecordCollectionRequestMethod<TFields>;
     readonly eachPage: RecordPageIteratationMethod<TFields>;
     readonly all: RecordCollectionRequestMethod<TFields>;
+    readonly page: RecordPageRequestMethod<TFields>;
 
     static paramValidators = paramValidators;
 
@@ -55,6 +66,7 @@ class Query<TFields extends FieldSet> {
 
         this.firstPage = callbackToPromise(firstPage, this);
         this.eachPage = callbackToPromise(eachPage, this, 1);
+        this.page = callbackToPromise(page, this);
         this.all = callbackToPromise(all, this);
     }
 
@@ -109,6 +121,29 @@ class Query<TFields extends FieldSet> {
  * Fetches the first page of results for the query asynchronously,
  * then calls `done(error, records)`.
  */
+ function page<TFields extends FieldSet>(
+    this: Query<TFields>,
+    done: RecordCollectionCallback<TFields>
+) {
+    if (!isFunction(done)) {
+        throw new Error('The first parameter to `firstPage` must be a function');
+    }
+
+    this.eachPage(
+        records => {
+            done(null, records);
+        },
+        error => {
+            done(error, null);
+        },
+        false
+    );
+}
+
+/**
+ * Fetches the first page of results for the query asynchronously,
+ * then calls `done(error, records)`.
+ */
 function firstPage<TFields extends FieldSet>(
     this: Query<TFields>,
     done: RecordCollectionCallback<TFields>
@@ -140,7 +175,8 @@ function firstPage<TFields extends FieldSet>(
 function eachPage<TFields extends FieldSet>(
     this: Query<TFields>,
     pageCallback: PageCallback<TFields>,
-    done: DoneCallback
+    done: DoneCallback,
+    onlyRecords = true
 ) {
     if (!isFunction(pageCallback)) {
         throw new Error('The first parameter to `eachPage` must be a function');
@@ -172,7 +208,8 @@ function eachPage<TFields extends FieldSet>(
                     return new Record(this._table, null, recordJson);
                 });
 
-                pageCallback(records, next);
+                const res = onlyRecords ? records : { result };
+                pageCallback(res, next);
             }
         });
     };
