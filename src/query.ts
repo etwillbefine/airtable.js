@@ -208,7 +208,7 @@ function eachPage<TFields extends FieldSet>(
                     return new Record(this._table, null, recordJson);
                 });
 
-                const res = onlyRecords ? records : { result };
+                const res = onlyRecords ? records : result;
                 pageCallback(res, next);
             }
         });
